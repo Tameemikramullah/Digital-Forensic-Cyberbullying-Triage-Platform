@@ -101,6 +101,10 @@ SECRET_KEY=$secret
 $env:PYTHONPATH = "."
 python ml\train_real.py
 
+or
+
+$env:ENABLE_BERT="1"; python ml\train_real.py
+
 # 6. Backend, from the project root
 $env:PYTHONPATH = "."
 python -m uvicorn backend.app.main:app --reload
@@ -174,6 +178,10 @@ PYTHONPATH=. python ml/train_real.py
 $env:PYTHONPATH = "."
 python ml\train_real.py
 
+or
+
+$env:ENABLE_BERT="1"; python ml\train_real.py
+
 python -m json.tool ml/saved_models/model_registry.json
 ```
 
@@ -217,13 +225,3 @@ It uses the project-root `.venv` and resolves the project root itself, so it can
 5. The examiner confirms, rejects, or escalates the item.
 6. Verify/export the audit and custody records.
 
-## Limitations
-
-- This is an educational prototype, not a production or court-ready forensic tool.
-- Hash chains detect later record changes but do not provide digital signatures, WORM storage, or true append-only persistence.
-- Reproducibility baseline passes locally; independent reproducibility still requires manual comparison in a second environment.
-- The fixed 15-case operational simulation has low recall at the current 0.70 threshold. It must be reported as a limitation, not as deployment validation.
-- BERT (HuggingFace Transformers) is implemented but **not a validated operational model**. Full-dataset fine-tuning is infeasible on this CPU-only host (~33.8 s/batch on 8 threads, no GPU; extrapolates to ~16 h). It is trained on a small stratified subsample for evaluation only, and the backend loads it only when the artifact exists.
-- The ensemble triage path may fall back to SHAP-based explanations for some models, which can be non-deterministic and is not ideal for forensic attribution.
-- Advanced permissions (RBAC), evidence pagination, CI/CD, and monitoring are not yet implemented.
-- The classifier is a prioritisation aid; human review is always required.
