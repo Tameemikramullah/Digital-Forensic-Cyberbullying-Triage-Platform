@@ -23,7 +23,7 @@ Training uses a stratified 80/20 split of `datasets/raw/cyberbullying_tweets.csv
 | SVM | 82.79% | 82.52% | 82.76% |
 | Logistic Regression | 82.72% | 82.56% | 82.81% |
 | Naïve Bayes | 77.37% | 75.66% | 75.89% |
-| CNN | 84.40% | 71.8% | 84.40% |
+| CNN | 84.40% | 71.80% | 84.40% |
 | BERT | 85.40% | 57.40% | 79.50% |
 
 SVM is the primary triage model because it has comparable Macro-F1 to Logistic Regression, faster training, calibrated probabilities, and deterministic feature-contribution explanations. Naïve Bayes is retained as a baseline.
