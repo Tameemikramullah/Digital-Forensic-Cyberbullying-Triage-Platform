@@ -32,9 +32,17 @@ class TextTokenDataset(Dataset):
         }
 
 
-def build_bert_model(model_name: str = "distilbert-base-uncased", num_labels: int = 2):
+def build_bert_model(model_name: str = "distilbert-base-uncased", label_names: List[str] = None):
+    label_names = label_names or [str(index) for index in range(6)]
+    id2label = {index: label for index, label in enumerate(label_names)}
+    label2id = {label: index for index, label in id2label.items()}
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
+    model = AutoModelForSequenceClassification.from_pretrained(
+        model_name,
+        num_labels=len(label_names),
+        id2label=id2label,
+        label2id=label2id,
+    )
     return tokenizer, model
 
 
@@ -54,12 +62,18 @@ def train_bert_model(
     batch_size: int = 16,
     max_length: int = 128,
     max_samples: int = None,
+    label_names: List[str] = None,
 ):
     import os as _os
     _os.environ.setdefault("OMP_NUM_THREADS", "4")
     torch.set_num_threads(4)
 
-    tokenizer, model = build_bert_model(model_name)
+    # Hugging Face may render download/progress output to a pipe owned by the
+    # API server. Keep training independent from the lifetime of that stream.
+    from transformers.utils import logging as transformers_logging
+    transformers_logging.disable_progress_bar()
+
+    tokenizer, model = build_bert_model(model_name, label_names=label_names)
 
     if max_samples is not None and len(texts) > max_samples:
         texts = texts[:max_samples]
@@ -85,9 +99,6 @@ def train_bert_model(
             loss = outputs.loss
             loss.backward()
             optimizer.step()
-        if epoch_idx % 500 == 0:
-            print(f"[bert_model] epoch {epoch_idx+1}/{epochs} batch {batch_idx} loss={loss.item():.4f}", flush=True)
-
     return model, tokenizer
 
 

@@ -10,11 +10,16 @@ def paired_t_test(scores_a: List[float], scores_b: List[float]) -> Dict[str, flo
 
 
 def mcnemar_test(y_true, pred_a, pred_b) -> Dict[str, float]:
-    from statsmodels.stats.contingency_tables import mcnemar
     a1 = np.sum((pred_a == y_true) & (pred_b == y_true))
     a2 = np.sum((pred_a == y_true) & (pred_b != y_true))
     b1 = np.sum((pred_a != y_true) & (pred_b == y_true))
     b2 = np.sum((pred_a != y_true) & (pred_b != y_true))
-    table = [[a1, a2], [b1, b2]]
-    result = mcnemar(table, exact=True)
-    return {"statistic": float(result.statistic), "p_value": float(result.pvalue)}
+    discordant_pairs = int(a2 + b1)
+    p_value = stats.binomtest(a2, n=discordant_pairs, p=0.5).pvalue if discordant_pairs else 1.0
+    return {
+        "statistic": float(min(a2, b1)),
+        "p_value": float(p_value),
+        "a_only_correct": float(a2),
+        "b_only_correct": float(b1),
+        "discordant_pairs": float(discordant_pairs),
+    }

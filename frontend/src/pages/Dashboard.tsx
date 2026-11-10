@@ -22,7 +22,7 @@ export default function Dashboard() {
     { label: 'Threshold Calibration', desc: 'Threshold sweep study and justification', to: '/threshold-calibration', icon: FlaskConical, color: 'bg-purple-600' },
     { label: 'Operational Evaluation', desc: 'Recall, precision, workload reduction', to: '/operational-evaluation', icon: Activity, color: 'bg-teal-600' },
     { label: 'Error Analysis', desc: 'False positives, false negatives, ambiguous cases', to: '/error-analysis', icon: SearchX, color: 'bg-red-600' },
-    { label: 'Model Comparison', desc: 'Compare SVM, BERT, CNN, Logistic, Naive Bayes', to: '/model-comparison', icon: GitCompare, color: 'bg-gray-700' },
+    { label: 'Model Comparison', desc: 'Compare SVM, DistilBERT, CNN, Logistic, Naive Bayes', to: '/model-comparison', icon: GitCompare, color: 'bg-gray-700' },
   ]
 
   return (

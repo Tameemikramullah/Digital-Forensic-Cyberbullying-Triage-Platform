@@ -54,6 +54,7 @@ export default function OperationalEvaluationDashboard() {
     { name: 'FPR', value: simulated.false_positive_rate },
     { name: 'FNR', value: simulated.false_negative_rate },
   ] : []
+  const formatInterval = (interval?: number[] | null) => interval ? `${interval[0].toFixed(1)}–${interval[1].toFixed(1)}%` : 'not estimable'
 
   return (
     <div className="p-6">
@@ -62,7 +63,7 @@ export default function OperationalEvaluationDashboard() {
       <div className="bg-white p-6 rounded shadow mb-6">
         <h2 className="text-xl font-bold mb-4">Live Operational Metrics</h2>
         <p className="text-sm text-gray-600 mb-4">
-          Metrics computed from examiner-reviewed evidence in the database. These reflect real operational performance but require sufficient reviewed cases to be statistically reliable.
+          Metrics computed from app-recorded reviewer decisions in the database; reviewer credentials are not verified by the app. The current paired sample is {liveMetrics?.total_paired ?? 0} cases, so treat these as descriptive rather than independent practitioner validation. The app reports prediction/review disagreements, but does not record whether a reviewer consciously overrode a model.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="bg-white p-4 rounded shadow border">
@@ -83,7 +84,14 @@ export default function OperationalEvaluationDashboard() {
             <h3 className="text-lg font-bold mb-4">Metrics</h3>
             <div className="space-y-2">
               <div className="flex justify-between"><span>Recall:</span><span className="font-bold">{((liveMetrics?.recall || recall).toFixed(1))}%</span></div>
+              <p className="text-xs text-gray-500">95% Wilson CI: {formatInterval(liveMetrics?.confidence_intervals_95?.recall)}</p>
               <div className="flex justify-between"><span>Precision:</span><span className="font-bold">{((liveMetrics?.precision || precision).toFixed(1))}%</span></div>
+              <p className="text-xs text-gray-500">95% Wilson CI: {formatInterval(liveMetrics?.confidence_intervals_95?.precision)}</p>
+              <div className="flex justify-between"><span>Accuracy:</span><span className="font-bold">{(liveMetrics?.accuracy ?? 0).toFixed(1)}%</span></div>
+              <p className="text-xs text-gray-500">95% Wilson CI: {formatInterval(liveMetrics?.confidence_intervals_95?.accuracy)}</p>
+              <div className="flex justify-between"><span>Prediction/review disagreements:</span><span className="font-bold">{liveMetrics?.prediction_review_disagreements ?? 0}</span></div>
+              <div className="flex justify-between"><span>Unmapped predictions excluded:</span><span className="font-bold">{liveMetrics?.invalid_prediction_count ?? 0}</span></div>
+              <p className="text-xs text-gray-500">By reviewer account ID: {JSON.stringify(liveMetrics?.disagreements_by_reviewer_account ?? {})}</p>
               <div className="flex justify-between"><span>False Positive Rate:</span><span className="font-bold">{((liveMetrics?.false_positive_rate || fpr).toFixed(1))}%</span></div>
               <div className="flex justify-between"><span>False Negative Rate:</span><span className="font-bold">{((liveMetrics?.false_negative_rate || fnr).toFixed(1))}%</span></div>
               <div className="flex justify-between"><span>Workload Reduction:</span><span className="font-bold">{((liveMetrics?.workload_reduction || workloadReduction).toFixed(1))}%</span></div>
@@ -108,9 +116,9 @@ export default function OperationalEvaluationDashboard() {
       <div className="bg-white p-6 rounded shadow mb-6">
         <div className="flex justify-between items-center mb-4">
           <div>
-            <h2 className="text-xl font-bold">Simulated Case Study</h2>
+          <h2 className="text-xl font-bold">Curated Simulated Challenge Set</h2>
             <p className="text-sm text-gray-600">
-              Controlled evaluation using a fixed set of {simulated?.total_cases || 0} cases with known ground truth labels. This provides credible operational metrics independent of real examiner reviews.
+              {simulated?.total_cases || 0} constructed cases with author-assigned reference labels based on training-data annotation patterns. These labels were not independently adjudicated, and these are not real practitioner decisions or a representative operational sample. Results are descriptive only.
             </p>
           </div>
           <select className="border rounded p-2" value={modelName} onChange={e => setModelName(e.target.value)}>
@@ -124,7 +132,7 @@ export default function OperationalEvaluationDashboard() {
           <p>Loading simulated case results...</p>
         ) : simulated ? (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
               <div className="bg-gray-50 p-3 rounded border">
                 <p className="text-sm text-gray-600">Total Cases</p>
                 <p className="text-xl font-bold">{simulated.total_cases}</p>
@@ -136,10 +144,15 @@ export default function OperationalEvaluationDashboard() {
               <div className="bg-gray-50 p-3 rounded border">
                 <p className="text-sm text-gray-600">Accuracy</p>
                 <p className="text-xl font-bold">{simulated.accuracy.toFixed(1)}%</p>
+                <p className="text-xs text-gray-600">matches author-assigned labels</p>
               </div>
               <div className="bg-gray-50 p-3 rounded border">
                 <p className="text-sm text-gray-600">F1 Score</p>
                 <p className="text-xl font-bold">{simulated.f1_score.toFixed(1)}%</p>
+              </div>
+              <div className="bg-gray-50 p-3 rounded border">
+                <p className="text-sm text-gray-600">Threshold</p>
+                <p className="text-xl font-bold">{simulated.threshold.toFixed(2)}</p>
               </div>
             </div>
 
@@ -148,9 +161,14 @@ export default function OperationalEvaluationDashboard() {
                 <h3 className="text-lg font-bold mb-4">Simulated Metrics</h3>
                 <div className="space-y-2">
                   <div className="flex justify-between"><span>Recall:</span><span className="font-bold">{simulated.recall.toFixed(1)}%</span></div>
+                  <p className="text-xs text-gray-500">95% Wilson CI: {formatInterval(simulated.confidence_intervals_95?.recall)}</p>
                   <div className="flex justify-between"><span>Precision:</span><span className="font-bold">{simulated.precision.toFixed(1)}%</span></div>
+                  <p className="text-xs text-gray-500">95% Wilson CI: {formatInterval(simulated.confidence_intervals_95?.precision)}</p>
+                  <div className="flex justify-between"><span>Accuracy:</span><span className="font-bold">{simulated.accuracy.toFixed(1)}%</span></div>
+                  <p className="text-xs text-gray-500">95% Wilson CI: {formatInterval(simulated.confidence_intervals_95?.accuracy)}</p>
                   <div className="flex justify-between"><span>False Positive Rate:</span><span className="font-bold">{simulated.false_positive_rate.toFixed(1)}%</span></div>
                   <div className="flex justify-between"><span>False Negative Rate:</span><span className="font-bold">{simulated.false_negative_rate.toFixed(1)}%</span></div>
+                  <div className="flex justify-between"><span>True Positives / Actual Positives:</span><span className="font-bold">{simulated.true_positives} / {simulated.true_positives + simulated.false_negatives}</span></div>
                 </div>
               </div>
               <div className="bg-white p-6 rounded shadow">
@@ -175,7 +193,7 @@ export default function OperationalEvaluationDashboard() {
                     <th className="px-4 py-2 text-left">ID</th>
                     <th className="px-4 py-2 text-left">Category</th>
                     <th className="px-4 py-2 text-left">Content</th>
-                    <th className="px-4 py-2 text-left">Ground Truth</th>
+                    <th className="px-4 py-2 text-left">Author-assigned Reference Label</th>
                     <th className="px-4 py-2 text-left">Prediction</th>
                     <th className="px-4 py-2 text-left">Confidence</th>
                     <th className="px-4 py-2 text-left">Status</th>
@@ -187,14 +205,14 @@ export default function OperationalEvaluationDashboard() {
                       <td className="px-4 py-2 font-mono text-xs">{row.id}</td>
                       <td className="px-4 py-2 text-xs">{row.category}</td>
                       <td className="px-4 py-2 text-xs max-w-xs truncate">{row.content}</td>
-                      <td className="px-4 py-2">{row.ground_truth}</td>
+                      <td className="px-4 py-2">{row.reference_label}</td>
                       <td className="px-4 py-2 font-bold">{row.prediction}</td>
                       <td className="px-4 py-2">{(row.confidence * 100).toFixed(1)}%</td>
                       <td className="px-4 py-2">
                         {row.correct ? (
-                          <span className="text-green-700 font-bold">CORRECT</span>
+                          <span className="text-green-700 font-bold">MATCHES REFERENCE</span>
                         ) : (
-                          <span className="text-red-700 font-bold">INCORRECT</span>
+                          <span className="text-red-700 font-bold">DIFFERS FROM REFERENCE</span>
                         )}
                       </td>
                     </tr>

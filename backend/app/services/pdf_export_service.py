@@ -26,10 +26,13 @@ def generate_forensic_pdf(report: Dict[str, Any]) -> bytes:
         story.append(Paragraph("Triage Result", styles["Heading2"]))
         data = [
             ["Prediction", triage.get("prediction", "")],
+            ["Prediction Status", triage.get("prediction_status", "")],
             ["Confidence", f"{triage.get('confidence', 0):.2f}"],
             ["Risk Level", triage.get("risk_level", "")],
             ["Model Version", triage.get("model_version", "")],
         ]
+        if triage.get("prediction_warning"):
+            data.append(["Interpretation", Paragraph(triage["prediction_warning"], styles["Normal"])])
         t = Table(data, colWidths=[200, 300])
         t.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (0, -1), colors.lightgrey),

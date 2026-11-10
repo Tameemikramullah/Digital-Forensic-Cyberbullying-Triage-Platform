@@ -9,11 +9,14 @@ interface ErrorItem {
   prediction: string
   confidence: number
   examiner_decision: string
+  reviewer_account_id: number
   review_notes?: string
   model_name: string
   model_version: string
   threshold: number
   risk_level: string
+  prediction_status?: string
+  mapping_warning?: string
 }
 
 interface Discussion {
@@ -28,6 +31,9 @@ interface Discussion {
   false_negative_rate: number
   category_counts?: Record<string, number>
   category_details?: Record<string, any[]>
+  total_paired?: number
+  reviewer_account_counts?: Record<string, number>
+  errors_by_reviewer_account?: Record<string, number>
 }
 
 function ErrorCard({ item, type }: { item: ErrorItem; type: 'fp' | 'fn' | 'amb' }) {
@@ -45,11 +51,16 @@ function ErrorCard({ item, type }: { item: ErrorItem; type: 'fp' | 'fn' | 'amb' 
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div><strong>Prediction:</strong> {item.prediction}</div>
         <div><strong>Confidence:</strong> {(item.confidence * 100).toFixed(1)}%</div>
-        <div><strong>Examiner Decision:</strong> {item.examiner_decision}</div>
+        <div><strong>Recorded Review:</strong> {item.examiner_decision} (account #{item.reviewer_account_id})</div>
         <div><strong>Risk Level:</strong> {item.risk_level}</div>
         <div><strong>Model:</strong> {item.model_name} v{item.model_version}</div>
         <div><strong>Threshold:</strong> {item.threshold}</div>
       </div>
+      {item.mapping_warning && (
+        <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+          <strong>{item.prediction_status === 'legacy_unmapped' ? 'Legacy unmapped record:' : 'Unmapped prediction:'}</strong> {item.mapping_warning}
+        </div>
+      )}
       {item.review_notes && (
         <div className="mt-2 text-xs text-gray-700">
           <strong>Examiner Notes:</strong> {item.review_notes}
@@ -80,7 +91,10 @@ export default function ErrorAnalysis() {
     <div className="p-6">
       <h1 className="text-3xl font-bold mb-2">Structured Error Analysis</h1>
       <p className="text-gray-600 mb-6">
-        Systematic review of model mistakes to identify failure modes and improvement opportunities.
+        Error cases use app-recorded review decisions. The app reports reviewer account IDs, not verified practitioner identities; a prediction/review disagreement does not prove a conscious override.
+      </p>
+      <p className="text-sm text-gray-600 mb-6">
+        Resolved prediction/review pairs: {discussion.total_paired ?? 0}. Reviewed items by account ID: {JSON.stringify(discussion.reviewer_account_counts || {})}. Errors by account ID: {JSON.stringify(discussion.errors_by_reviewer_account || {})}.
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">

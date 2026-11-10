@@ -73,6 +73,7 @@ export interface ChainOfCustody {
 export interface ExplanationResponse {
   prediction: string
   confidence: number
+  risk_score: number
   risk_level: string
   requires_further_review: boolean
   model_version: string
@@ -104,13 +105,18 @@ export interface Explanation {
 export interface ModelVote {
   model_name: string
   prediction: string
+  /** Model-specific top-class probability; never compared across models. */
   confidence: number
+  explanation_available?: boolean
+  explanation_method?: string
+  explanation_reason?: string
 }
 
 export interface EnsembleResponse {
   evidence_id: number
   prediction: string
   confidence: number
+  risk_score: number
   risk_level: string
   requires_further_review: boolean
   threshold: number
@@ -122,9 +128,12 @@ export interface EnsembleResponse {
   votes: ModelVote[]
   model_agreement: {
     agreement: string
-    confidence_spread: number
+    confidence_spread?: number | null
     disagreement_levels: number
     unique_predictions: string[]
+    vote_counts?: Record<string, number>
+    winning_vote_share?: number
+    tie?: boolean
     forced_review?: boolean
   }
 }

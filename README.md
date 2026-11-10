@@ -16,17 +16,30 @@ An educational **post-event forensic triage prototype** for prioritising social-
 
 ## Evaluated models
 
-Training uses a stratified 80/20 split of `datasets/raw/cyberbullying_tweets.csv` (9,382 held-out test posts; seed 42).
+The source CSV has 47,692 parsed rows. Preparation removes missing values, blank labels, and rows where the label equals the text (0 rows for each in this dataset), normalizes text, then removes 785 duplicates keyed by cleaned text and label. The final dataset has 46,907 rows. A stratified 80/20 split (seed 42) uses 37,525 training and 9,382 held-out test posts.
 
-| Model | Accuracy | Macro-F1 | Weighted-F1 |
-|---|---:|---:|---:|
-| SVM | 82.79% | 82.52% | 82.76% |
-| Logistic Regression | 82.72% | 82.56% | 82.81% |
-| Naïve Bayes | 77.37% | 75.66% | 75.89% |
+| Model                       | Accuracy | Macro-F1 | Weighted-F1 |
+| --------------------------- | -------: | -------: | ----------: |
+| Six-class majority baseline |   16.99% |    4.84% |       4.93% |
+| SVM                         |   82.79% |   82.52% |      82.76% |
+| Logistic Regression         |   82.73% |   82.57% |      82.81% |
+| Naïve Bayes                 |   77.37% |   75.66% |      75.89% |
+| CNN                         |   82.53% |   82.33% |      82.55% |
+| DistilBERT                  |   85.66% |   85.44% |      85.61% |
 
-SVM is the primary triage model because it has comparable Macro-F1 to Logistic Regression, faster training, calibrated probabilities, and deterministic feature-contribution explanations. Naïve Bayes is retained as a baseline.
+SVM is the primary triage model because it has comparable Macro-F1 to Logistic Regression, faster training, calibrated probabilities, and deterministic feature-contribution explanations. Naïve Bayes is retained as a classical model benchmark.
 
-CNN and BERT code exist in the repository, but they are **not validated operational models**. Full-dataset BERT fine-tuning is infeasible on this CPU-only host (~33.8 s/batch, no GPU); it is evaluated on a small stratified subsample only.
+### Ensemble and risk definitions
+
+The ensemble requires the shared six labels (`age`, `ethnicity`, `gender`, `not_cyberbullying`, `other_cyberbullying`, `religion`) and gives each successful, distinct model one equal vote. It selects the plurality label; per-model top-class confidence values are shown for context but never compared or weighted. Ensemble `confidence` is the winning-label vote share. Ensemble `risk_score` is the fraction of successful votes assigned to any label except `not_cyberbullying`; it is not a probability. Single-model `risk_score` instead sums that model's probabilities for the five cyberbullying labels.
+
+For risk threshold `T`, `LOW` means `risk_score < T`, `MEDIUM` means `T <= risk_score < max(T, 0.80)`, and `HIGH` means `risk_score >= max(T, 0.80)`. Ensemble `T` is 0.50. Single-model `T` is selected per model from app-recorded reviewer decisions against the 95% recall target, falling back to 0.70 only when no eligible reviewed data exists; reviewer qualifications are not verified. Medium and high scores require review. Ensemble ties, more than two distinct predictions, or no valid predictions also require review; no valid votes produce `UNKNOWN` risk. A tied plurality is returned deterministically by alphabetical label order, with review forced.
+
+The threshold-calibration screen reports Wilson 95% confidence intervals for precision and recall. These intervals remain wide with the current two reviewed cases.
+
+All five models were trained and evaluated on the same stratified six-class split (37,525 training posts; 9,382 test posts; seed 42). DistilBERT was fine-tuned for one epoch and evaluated on the full test set. These held-out metrics do not establish operational suitability; human review remains required. Per-class F1 scores are recorded in `report.md` and the model registry.
+
+Single-model thresholds are selected against a 95% recall target using the harmful-risk score, defined as the sum of probabilities for the five non-benign classes. If a tested threshold meets the target, the highest such threshold is selected to reduce flagged workload. If none meet it, the lowest threshold among those with the highest observed recall is selected. In the 2026-11-05 project-root database snapshot, only two eligible review records were available and both were positive; no tested threshold reached 95% recall. The fallback threshold was 0.50, with observed recall 1/2 (50%) and workload reduction 1/2 (50%). This tiny, single-class sample cannot support a dependable recall target or an independent practitioner-validation claim.
 
 ## Setup
 
@@ -56,6 +69,7 @@ printf 'DATABASE_URL=sqlite:///./forensic_triage.db\nALGORITHM=HS256\nACCESS_TOK
 
 # 5. Train the models — required on a fresh clone, see "Train the evaluated models"
 PYTHONPATH=. python ml/train_real.py
+PYTHONPATH=. ENABLE_BERT=1 python ml/train_real.py
 
 # 6. Backend, from the project root
 PYTHONPATH=. uvicorn backend.app.main:app --reload
@@ -100,10 +114,6 @@ SECRET_KEY=$secret
 # 5. Train the models — required on a fresh clone, see "Train the evaluated models"
 $env:PYTHONPATH = "."
 python ml\train_real.py
-
-or
-
-$env:ENABLE_BERT="1"; python ml\train_real.py
 
 # 6. Backend, from the project root
 $env:PYTHONPATH = "."
@@ -162,7 +172,7 @@ Backend runs on `http://localhost:8000` (`GET /health` for a readiness check); t
 
 ### Known issue on some hosts
 
-Importing `transformers` inside a request thread can crash on the way to Triton (`torch._dynamo` → `triton/knobs.py`), taking the worker down with a segmentation fault and no Python traceback. `backend/app/main.py` now imports `torch` and `transformers.models.auto.modeling_auto` at module load, before the event loop starts, so Triton's native initialiser runs on the main thread. If you invoke uvicorn through another entry point, keep that pre-import, or the crash returns only when a BERT request is handled.
+Importing `transformers` inside a request thread can crash on the way to Triton (`torch._dynamo` → `triton/knobs.py`), taking the worker down with a segmentation fault and no Python traceback. `backend/app/main.py` now imports `torch` and `transformers.models.auto.modeling_auto` at module load, before the event loop starts, so Triton's native initialiser runs on the main thread. If you invoke uvicorn through another entry point, keep that pre-import, or the crash returns only when a DistilBERT request is handled.
 
 ## Train the evaluated models
 
@@ -178,16 +188,12 @@ PYTHONPATH=. python ml/train_real.py
 $env:PYTHONPATH = "."
 python ml\train_real.py
 
-or
-
-$env:ENABLE_BERT="1"; python ml\train_real.py
-
 python -m json.tool ml/saved_models/model_registry.json
 ```
 
 Artifacts and metrics are written to `ml/saved_models/`. Restart the backend after training so it loads the current artifacts.
 
-Deep-learning artifacts are best-effort. `train_real.py` trains the three scikit-learn models unconditionally and attempts CNN, recording any failure in `model_registry.json` instead of aborting the run. BERT is skipped entirely unless enabled with `ENABLE_BERT=1` on Ubuntu, or `$env:ENABLE_BERT=1` in PowerShell, which is impractical on a CPU-only host. The backend loads CNN and BERT only when their artifacts exist, so a missing artifact degrades to the scikit-learn models instead of raising.
+Deep-learning artifacts are best-effort. `train_real.py` trains the three scikit-learn models and CNN, recording failures in `model_registry.json` instead of aborting the run. DistilBERT is skipped unless enabled with `ENABLE_BERT=1` on Ubuntu, or `$env:ENABLE_BERT=1` in PowerShell. The current registry contains completed six-class CNN and DistilBERT runs. The backend loads these models only when their artifacts exist.
 
 ## Verify the prototype
 
@@ -225,3 +231,25 @@ It uses the project-root `.venv` and resolves the project root itself, so it can
 5. The examiner confirms, rejects, or escalates the item.
 6. Verify/export the audit and custody records.
 
+## Audit hash-chain validation
+
+Each evidence item's first audit record starts with an empty previous hash. Every following record stores the prior record's SHA-256 entry hash. An entry hash covers that previous hash, event type, actor, event details, and canonical timestamp. Verification recomputes each hash and checks the chain links.
+
+The tampering test creates a two-entry chain, verifies it, changes the first stored event-details value without updating its hash, and verifies that integrity checking fails with an entry-hash mismatch:
+
+```bash
+.venv/bin/pytest -q tests/forensic/test_audit_and_custody.py::test_audit_chain_verification_fails_after_persisted_log_entry_is_tampered
+```
+
+## Limitations
+
+- This is an educational prototype, not a production or court-ready forensic tool.
+- Hash chains detect later record changes but do not provide digital signatures, WORM storage, or true append-only persistence.
+- Reproducibility baseline passes locally; independent reproducibility still requires manual comparison in a second environment.
+- Current SVM run on the fixed 15-case challenge set at selected threshold 0.50: TP=4, FP=3, FN=4, TN=4; recall 50.0% (95% Wilson CI 21.52–78.48%), precision 57.14% (CI 25.05–84.18%), and accuracy 53.33% (CI 30.12–75.19%). Labels follow training-data patterns, so this is not independent validation or a deployment estimate.
+- The challenge-set labels were assigned by the project author from training-data annotation patterns. They were not independently adjudicated, and are not real practitioner decisions. No independent two-annotator set or agreement statistic is available. Reviewer accounts in example case studies are placeholders; database review records do not establish examiner credentials. The application reports prediction/review disagreement by reviewer account ID, but does not record intentional overrides.
+- The case studies in §12 preserve historical binary outputs and scores; they are not results from the retrained six-class models. Historical `LABEL_1` values stored under ensemble v1.0 are legacy unmapped records, excluded from current metrics and marked as such in error analysis and report exports. New DistilBERT outputs use the canonical six-class mapping.
+- DistilBERT (HuggingFace Transformers; internal key `bert`) has a completed one-epoch six-class run, evaluated on the full 9,382-post test set. This is held-out analytical evaluation, not operational validation.
+- Ensemble risk is a vote share and must not be interpreted as a calibrated probability; per-model scores have different calibration properties.
+- Advanced permissions (RBAC), evidence pagination, CI/CD, and monitoring are not yet implemented.
+- The classifier is a prioritisation aid; human review is always required.

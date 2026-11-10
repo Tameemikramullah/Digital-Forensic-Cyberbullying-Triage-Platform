@@ -1,5 +1,5 @@
 import pytest
-from app.services.threshold_calibration import run_threshold_calibration
+from app.services.threshold_calibration import _select_threshold, run_threshold_calibration
 
 
 def test_threshold_calibration_no_reviews(db_session):
@@ -7,6 +7,23 @@ def test_threshold_calibration_no_reviews(db_session):
     assert result["model_name"] == "svm"
     assert result.get("results", []) == []
     assert "message" in result
+    assert "Target recall is 95%" in result["threshold_selection_rule"]
+
+
+def test_threshold_selection_uses_highest_threshold_meeting_target_and_conservative_fallback():
+    rows = [
+        {"threshold": 0.5, "precision": 100.0, "recall": 50.0},
+        {"threshold": 0.6, "precision": 90.0, "recall": 90.0},
+        {"threshold": 0.7, "precision": 50.0, "recall": 100.0},
+    ]
+
+    assert _select_threshold(rows)["threshold"] == 0.7
+    no_target_rows = [
+        {"threshold": 0.5, "precision": 100.0, "recall": 50.0},
+        {"threshold": 0.6, "precision": 80.0, "recall": 90.0},
+        {"threshold": 0.7, "precision": 50.0, "recall": 90.0},
+    ]
+    assert _select_threshold(no_target_rows)["threshold"] == 0.6
 
 
 def test_threshold_calibration_returns_results(db_session, test_user):
@@ -46,11 +63,13 @@ def test_threshold_calibration_returns_results(db_session, test_user):
         result = run_threshold_calibration(model_name="svm", db=db_session)
         assert "model_name" in result
         assert "results" in result
+        assert "threshold_selection_rule" in result
         if result.get("total_reviewed", 0) > 0:
             for entry in result["results"]:
                 assert "threshold" in entry
                 assert "recall" in entry
                 assert "precision" in entry
                 assert "workload_reduction" in entry
+                assert "meets_target_recall" in entry
     except FileNotFoundError:
         pytest.skip("Model file not found")

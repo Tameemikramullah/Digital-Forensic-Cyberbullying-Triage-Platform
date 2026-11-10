@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="410" viewBox="0 0 900 410" role="img" aria-labelledby="title description">
+  <title id="title">Six-class held-out model performance</title>
+  <desc id="description">Grouped bars show accuracy, Macro-F1, and Weighted F1 percentages for the majority baseline, SVM, Logistic Regression, Naive Bayes, CNN, and DistilBERT.</desc>
+  <rect width="900" height="410" fill="#ffffff"/>
+  <g font-family="Arial, sans-serif" fill="#1f2937">
+    <text x="450" y="28" text-anchor="middle" font-size="18" font-weight="bold">Six-class held-out model performance</text>
+    <text x="22" y="178" text-anchor="middle" font-size="13" transform="rotate(-90 22 178)">Score (%)</text>
+    <g stroke="#d1d5db" stroke-width="1" font-size="12">
+      <line x1="82" y1="300" x2="850" y2="300"/><text x="70" y="304" text-anchor="end" stroke="none" fill="#374151">0</text>
+      <line x1="82" y1="252" x2="850" y2="252"/><text x="70" y="256" text-anchor="end" stroke="none" fill="#374151">20</text>
+      <line x1="82" y1="204" x2="850" y2="204"/><text x="70" y="208" text-anchor="end" stroke="none" fill="#374151">40</text>
+      <line x1="82" y1="156" x2="850" y2="156"/><text x="70" y="160" text-anchor="end" stroke="none" fill="#374151">60</text>
+      <line x1="82" y1="108" x2="850" y2="108"/><text x="70" y="112" text-anchor="end" stroke="none" fill="#374151">80</text>
+      <line x1="82" y1="60" x2="850" y2="60"/><text x="70" y="64" text-anchor="end" stroke="none" fill="#374151">100</text>
+    </g>
+    <g>
+      <rect x="123" y="259.224" width="18" height="40.776" fill="#2563eb"/><rect x="145" y="288.384" width="18" height="11.616" fill="#0f766e"/><rect x="167" y="288.168" width="18" height="11.832" fill="#d97706"/>
+      <rect x="253" y="101.304" width="18" height="198.696" fill="#2563eb"/><rect x="275" y="101.952" width="18" height="198.048" fill="#0f766e"/><rect x="297" y="101.376" width="18" height="198.624" fill="#d97706"/>
+      <rect x="383" y="101.448" width="18" height="198.552" fill="#2563eb"/><rect x="405" y="101.832" width="18" height="198.168" fill="#0f766e"/><rect x="427" y="101.256" width="18" height="198.744" fill="#d97706"/>
+      <rect x="513" y="114.312" width="18" height="185.688" fill="#2563eb"/><rect x="535" y="118.416" width="18" height="181.584" fill="#0f766e"/><rect x="557" y="117.864" width="18" height="182.136" fill="#d97706"/>
+      <rect x="643" y="101.928" width="18" height="198.072" fill="#2563eb"/><rect x="665" y="102.408" width="18" height="197.592" fill="#0f766e"/><rect x="687" y="101.880" width="18" height="198.120" fill="#d97706"/>
+      <rect x="773" y="94.416" width="18" height="205.584" fill="#2563eb"/><rect x="795" y="94.944" width="18" height="205.056" fill="#0f766e"/><rect x="817" y="94.536" width="18" height="205.464" fill="#d97706"/>
+    </g>
+    <g font-size="12" text-anchor="middle">
+      <text x="154" y="322">Majority</text><text x="154" y="338">baseline</text>
+      <text x="284" y="322">SVM</text>
+      <text x="414" y="322">Logistic</text><text x="414" y="338">Regression</text>
+      <text x="544" y="322">Naïve Bayes</text>
+      <text x="674" y="322">CNN</text>
+      <text x="804" y="322">DistilBERT</text>
+    </g>
+    <g font-size="12">
+      <rect x="260" y="366" width="14" height="14" fill="#2563eb"/><text x="280" y="378">Accuracy</text>
+      <rect x="390" y="366" width="14" height="14" fill="#0f766e"/><text x="410" y="378">Macro-F1</text>
+      <rect x="525" y="366" width="14" height="14" fill="#d97706"/><text x="545" y="378">Weighted F1</text>
+    </g>
+  </g>
+</svg>

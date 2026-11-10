@@ -5,6 +5,7 @@ import { CheckCircle2, XCircle, Clock, Database } from 'lucide-react'
 
 interface ModelRecord {
   model_name: string
+  display_name?: string
   version: string
   status: string
   trained_at: string
@@ -37,7 +38,7 @@ export default function TrainingPerformance() {
   const completedModels = models.filter(m => m.status === 'completed' && m.evaluation)
 
   const chartData = completedModels.map(m => ({
-    model: m.model_name,
+    model: m.display_name || (m.model_name === 'bert' ? 'DistilBERT' : m.model_name),
     accuracy: m.evaluation!.accuracy * 100,
     macro_f1: m.evaluation!.macro_f1 * 100,
     weighted_f1: m.evaluation!.weighted_f1 * 100,
@@ -90,7 +91,7 @@ export default function TrainingPerformance() {
           <tbody>
             {models.map((model) => (
               <tr key={model.model_name} className="border-t">
-                <td className="px-4 py-2 font-bold capitalize">{model.model_name}</td>
+                <td className="px-4 py-2 font-bold">{model.display_name || (model.model_name === 'bert' ? 'DistilBERT' : model.model_name)}</td>
                 <td className="px-4 py-2">
                   {model.status === 'completed' ? (
                     <span className="inline-flex items-center gap-1 text-green-700 font-bold">
@@ -135,7 +136,7 @@ export default function TrainingPerformance() {
           <div className="space-y-2">
             {models.filter(m => m.status === 'failed').map(model => (
               <div key={model.model_name} className="text-sm text-red-700">
-                <span className="font-bold capitalize">{model.model_name}:</span> {model.error}
+                <span className="font-bold">{model.display_name || (model.model_name === 'bert' ? 'DistilBERT' : model.model_name)}:</span> {model.error}
               </div>
             ))}
           </div>

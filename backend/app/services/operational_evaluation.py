@@ -3,9 +3,7 @@ import joblib
 import numpy as np
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
-from ..models import Evidence, EvidenceMetadata, EvidenceStatus, ClassificationResult, ExaminerReview, User, UserRole
-from ..config import settings
-from ..services.hash_service import generate_hash
+from ..models import Evidence, ClassificationResult, ExaminerReview
 from ml.preprocessing.cleaner import clean_text
 from ml.operational.simulated_cases import SIMULATED_CASES
 
@@ -15,6 +13,7 @@ MODEL_DIRS = [
     os.path.join(PROJECT_ROOT, "ml", "saved_models"),
     os.path.join(PROJECT_ROOT, "saved_models"),
 ]
+CANONICAL_LABELS = {"age", "ethnicity", "gender", "not_cyberbullying", "other_cyberbullying", "religion"}
 
 
 def _load_model(model_name: str = "svm"):
@@ -39,6 +38,16 @@ def _harmful_probability(model, cleaned: str) -> float:
     classes = [str(label) for label in model.classes_]
     harmful_indices = [index for index, label in enumerate(classes) if label != "not_cyberbullying"]
     return float(np.sum(probabilities[harmful_indices])) if harmful_indices else 0.0
+
+
+def _wilson_interval(successes: int, total: int, z: float = 1.96):
+    if total <= 0:
+        return None
+    rate = successes / total
+    denominator = 1 + z * z / total
+    center = (rate + z * z / (2 * total)) / denominator
+    margin = z * np.sqrt((rate * (1 - rate) + z * z / (4 * total)) / total) / denominator
+    return [round(max(0.0, center - margin) * 100, 2), round(min(1.0, center + margin) * 100, 2)]
 
 
 def _latest_classification(db: Session, evidence_id: int):
@@ -68,6 +77,10 @@ def compute_operational_metrics(db: Session) -> Dict[str, Any]:
 
     y_true = []
     y_pred = []
+    reviewer_account_counts: Dict[str, int] = {}
+    disagreement_by_reviewer: Dict[str, int] = {}
+    prediction_review_disagreements = 0
+    invalid_prediction_count = 0
     flagged_set = set()
     confirmed_set = set()
     rejected_set = set()
@@ -80,9 +93,6 @@ def compute_operational_metrics(db: Session) -> Dict[str, Any]:
         if not classification or not review:
             continue
 
-        if classification.prediction != "not_cyberbullying":
-            flagged_set.add(evidence.id)
-
         if review.decision == "CONFIRMED":
             confirmed_set.add(evidence.id)
         elif review.decision == "REJECTED":
@@ -90,9 +100,23 @@ def compute_operational_metrics(db: Session) -> Dict[str, Any]:
         elif review.decision == "NEEDS_MORE_REVIEW":
             escalated_set.add(evidence.id)
 
+        if classification.prediction not in CANONICAL_LABELS:
+            invalid_prediction_count += 1
+            continue
+
+        if classification.prediction != "not_cyberbullying":
+            flagged_set.add(evidence.id)
+
         if review.decision in ["CONFIRMED", "REJECTED"]:
-            y_true.append(1 if review.decision == "CONFIRMED" else 0)
-            y_pred.append(1 if classification.prediction != "not_cyberbullying" else 0)
+            reference = 1 if review.decision == "CONFIRMED" else 0
+            predicted = 1 if classification.prediction != "not_cyberbullying" else 0
+            y_true.append(reference)
+            y_pred.append(predicted)
+            reviewer_id = str(review.examiner_id)
+            reviewer_account_counts[reviewer_id] = reviewer_account_counts.get(reviewer_id, 0) + 1
+            if reference != predicted:
+                prediction_review_disagreements += 1
+                disagreement_by_reviewer[reviewer_id] = disagreement_by_reviewer.get(reviewer_id, 0) + 1
 
     y_true = np.array(y_true)
     y_pred = np.array(y_pred)
@@ -125,8 +149,20 @@ def compute_operational_metrics(db: Session) -> Dict[str, Any]:
         "false_negatives": fn,
         "true_negatives": tn,
         "total_paired": total_paired,
+        "accuracy": round(((tp + tn) / total_paired * 100) if total_paired else 0.0, 2),
+        "prediction_review_disagreements": prediction_review_disagreements,
+        "invalid_prediction_count": invalid_prediction_count,
+        "reviewer_account_counts": reviewer_account_counts,
+        "disagreements_by_reviewer_account": disagreement_by_reviewer,
+        "reviewer_credentials_verified": False,
         "recall": round(recall, 2),
         "precision": round(precision, 2),
+        "confidence_intervals_95": {
+            "accuracy": _wilson_interval(tp + tn, total_paired),
+            "precision": _wilson_interval(tp, tp + fp),
+            "recall": _wilson_interval(tp, tp + fn),
+            "method": "Wilson score intervals (95%)",
+        },
         "false_positive_rate": round(fpr, 2),
         "false_negative_rate": round(fnr, 2),
         "workload_reduction": round(workload_reduction, 2),
@@ -134,24 +170,9 @@ def compute_operational_metrics(db: Session) -> Dict[str, Any]:
     }
 
 
-def _get_or_create_simulated_examiner(db: Session) -> User:
-    email = "simulated-examiner@forensic.local"
-    user = db.query(User).filter(User.email == email).first()
-    if not user:
-        user = User(
-            email=email,
-            password_hash="simulated",
-            role=UserRole.REVIEWER,
-        )
-        db.add(user)
-        db.flush()
-    return user
-
-
 def run_simulated_cases(db: Session, model_name: str = "svm") -> Dict[str, Any]:
     model = _load_model(model_name)
     label_encoder = _load_label_encoder()
-    examiner = _get_or_create_simulated_examiner(db)
 
     # Mirror the deployed policy. If no reviewed operational set is available,
     # use the documented default rather than changing the decision silently.
@@ -168,7 +189,7 @@ def run_simulated_cases(db: Session, model_name: str = "svm") -> Dict[str, Any]:
 
     for case in SIMULATED_CASES:
         content = case["content"]
-        ground_truth = case["ground_truth"]
+        reference_label = case["reference_label"]
 
         cleaned = clean_text(content)
         prediction = str(model.predict([cleaned])[0])
@@ -182,7 +203,7 @@ def run_simulated_cases(db: Session, model_name: str = "svm") -> Dict[str, Any]:
                 pass
 
         predicted_flagged = harmful_probability >= threshold
-        actual_flagged = ground_truth == "cyberbullying"
+        actual_flagged = reference_label == "cyberbullying"
 
         if predicted_flagged and actual_flagged:
             tp += 1
@@ -198,7 +219,7 @@ def run_simulated_cases(db: Session, model_name: str = "svm") -> Dict[str, Any]:
             "content": content,
             "category": case["category"],
             "description": case["description"],
-            "ground_truth": ground_truth,
+            "reference_label": reference_label,
             "prediction": prediction,
             "confidence": round(confidence, 4),
             "harmful_probability": round(harmful_probability, 4),
@@ -218,11 +239,22 @@ def run_simulated_cases(db: Session, model_name: str = "svm") -> Dict[str, Any]:
 
     return {
         "model_name": model_name,
+        "evaluation_type": "CURATED_SIMULATION",
+        "label_source": "Author-assigned from training-data annotation patterns; not independently adjudicated",
+        "independent_validation": False,
+        "independent_annotator_count": 0,
+        "annotator_agreement": None,
         "threshold": threshold,
         "total_cases": total,
         "correct": tp + tn,
         "incorrect": fp + fn,
         "accuracy": round(accuracy, 2),
+        "confidence_intervals_95": {
+            "accuracy": _wilson_interval(tp + tn, total),
+            "precision": _wilson_interval(tp, tp + fp),
+            "recall": _wilson_interval(tp, tp + fn),
+            "method": "Wilson score intervals (95%)",
+        },
         "recall": round(recall, 2),
         "precision": round(precision, 2),
         "f1_score": round(f1, 2),

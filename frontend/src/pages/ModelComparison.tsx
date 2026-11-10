@@ -5,6 +5,10 @@ import { CheckCircle2, AlertTriangle } from 'lucide-react'
 interface ModelRow {
   model: string
   f1: number | null
+  evaluated_pairs?: number
+  confidence_intervals_95?: { f1_bootstrap?: number[] | null }
+  prediction_review_disagreements?: number
+  disagreements_by_reviewer_account?: Record<string, number>
   runtime: string
   explainability: string
   selected: boolean
@@ -31,7 +35,7 @@ export default function ModelComparison() {
     <div className="p-6">
       <h1 className="text-3xl font-bold mb-2">Inter-Model Comparison</h1>
       <p className="text-gray-600 mb-6">
-        Operational comparison against examiner decisions. This F1 score is distinct from the held-out multiclass Macro-F1 recorded during model training.
+        Binary comparison against app-recorded review decisions, whose authors' qualifications are not verified. This F1 score is distinct from held-out multiclass Macro-F1.
       </p>
 
       {warnings.length > 0 && (
@@ -52,25 +56,37 @@ export default function ModelComparison() {
         </div>
       )}
 
+      <p className="text-sm text-gray-600 mb-4">
+        App reviewer-account counts: {JSON.stringify(meta.reviewer_account_counts || {})}. Reviewer credentials verified: {String(meta.reviewer_credentials_verified ?? false)}.
+      </p>
+
       <div className="bg-white p-6 rounded shadow mb-6 overflow-x-auto">
         <h2 className="text-xl font-bold mb-4">Comparison Table</h2>
         <table className="min-w-full">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-2 text-left">Model</th>
-              <th className="px-4 py-2 text-left">Operational F1 (%)</th>
+              <th className="px-4 py-2 text-left">F1 and 95% CI</th>
               <th className="px-4 py-2 text-left">Runtime</th>
               <th className="px-4 py-2 text-left">Explainability</th>
               <th className="px-4 py-2 text-left">Selected</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {rows.map((row) => {
+              const f1Interval = row.confidence_intervals_95?.f1_bootstrap
+              return (
               <tr key={row.model} className={`border-t ${row.selected ? 'bg-green-50' : ''}`}>
                 <td className="px-4 py-2 font-bold capitalize">{row.model}</td>
                 <td className="px-4 py-2">
                   {row.f1 !== null && row.f1 !== undefined ? `${row.f1.toFixed(1)}%` : (
                     <span className="text-red-600" title={row.error}>{row.error || 'N/A'}</span>
+                  )}
+                  {row.f1 !== null && row.f1 !== undefined && (
+                    <p className="text-xs text-gray-500">n={row.evaluated_pairs}; bootstrap CI {f1Interval ? f1Interval.map(value => `${value.toFixed(1)}%`).join('–') : 'not estimable'}</p>
+                  )}
+                  {row.prediction_review_disagreements !== undefined && (
+                    <p className="text-xs text-gray-500">Prediction/review disagreements: {row.prediction_review_disagreements}; account IDs: {JSON.stringify(row.disagreements_by_reviewer_account || {})}</p>
                   )}
                   {row.warning && (
                     <p className="text-xs text-orange-600 mt-1 flex items-center gap-1">
@@ -95,7 +111,8 @@ export default function ModelComparison() {
                   )}
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>

@@ -4,6 +4,8 @@ from typing import Dict, Any, List
 import numpy as np
 from .error_categorization import categorize_error
 
+CANONICAL_LABELS = {"age", "ethnicity", "gender", "not_cyberbullying", "other_cyberbullying", "religion"}
+
 
 def _latest_classification(db: Session, evidence_id: int) -> ClassificationResult | None:
     return (
@@ -34,6 +36,8 @@ def compute_error_analysis(db: Session) -> Dict[str, Any]:
 
     category_counts: Dict[str, int] = {}
     category_details: Dict[str, List[Dict[str, Any]]] = {}
+    reviewer_account_counts: Dict[str, int] = {}
+    errors_by_reviewer_account: Dict[str, int] = {}
 
     y_true = []
     y_pred = []
@@ -49,6 +53,8 @@ def compute_error_analysis(db: Session) -> Dict[str, Any]:
         confidence = float(classification.confidence_score)
         decision = review.decision
         review_notes = review.notes
+        reviewer_id = str(review.examiner_id)
+        reviewer_account_counts[reviewer_id] = reviewer_account_counts.get(reviewer_id, 0) + 1
 
         row = {
             "evidence_id": evidence.id,
@@ -57,12 +63,29 @@ def compute_error_analysis(db: Session) -> Dict[str, Any]:
             "prediction": prediction,
             "confidence": confidence,
             "examiner_decision": decision,
+            "reviewer_account_id": review.examiner_id,
             "review_notes": review_notes,
             "model_name": classification.model_name,
             "model_version": classification.model_version,
             "threshold": classification.threshold,
             "risk_level": classification.risk_level,
         }
+
+        if prediction not in CANONICAL_LABELS:
+            is_legacy_label = prediction.startswith("LABEL_") and prediction[6:].isdigit()
+            row["prediction_status"] = "legacy_unmapped" if is_legacy_label else "unmapped"
+            row["mapping_warning"] = (
+                f"Stored label {prediction!r} is a legacy unmapped output, not a canonical six-class label; "
+                "it is excluded from current error metrics."
+                if is_legacy_label else
+                f"Stored prediction {prediction!r} is not a canonical six-class label and is excluded from current error metrics."
+            )
+            ambiguous_cases.append(row)
+            continue
+
+        if decision not in {"CONFIRMED", "REJECTED"}:
+            ambiguous_cases.append(row)
+            continue
 
         predicted_flagged = prediction != "not_cyberbullying"
         ground_truth_harmful = decision == "CONFIRMED"
@@ -76,8 +99,10 @@ def compute_error_analysis(db: Session) -> Dict[str, Any]:
 
         if is_false_positive:
             false_positives.append(row)
+            errors_by_reviewer_account[reviewer_id] = errors_by_reviewer_account.get(reviewer_id, 0) + 1
         elif is_false_negative:
             false_negatives.append(row)
+            errors_by_reviewer_account[reviewer_id] = errors_by_reviewer_account.get(reviewer_id, 0) + 1
         elif is_ambiguous:
             ambiguous_cases.append(row)
 
@@ -126,6 +151,9 @@ def compute_error_analysis(db: Session) -> Dict[str, Any]:
     discussion = {
         "total_evaluated": total_evaluated,
         "total_paired": total_paired,
+        "reviewer_account_counts": reviewer_account_counts,
+        "errors_by_reviewer_account": errors_by_reviewer_account,
+        "reviewer_credentials_verified": False,
         "true_positives": true_positives,
         "true_negatives": true_negatives,
         "false_positives_count": len(false_positives),

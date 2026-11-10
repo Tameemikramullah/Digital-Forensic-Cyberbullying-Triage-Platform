@@ -1,6 +1,7 @@
 import json
 from typing import Any, Dict, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import desc
 from backend.app.models import Evidence, ClassificationResult, ExaminerReview, AuditLog
 
 
@@ -9,7 +10,20 @@ def build_evidence_report(db: Session, evidence_id: int, format: str = "json") -
     if not evidence:
         raise ValueError("Evidence not found")
 
-    classification = db.query(ClassificationResult).filter(ClassificationResult.evidence_id == evidence_id).first()
+    classification = (
+        db.query(ClassificationResult)
+        .filter(ClassificationResult.evidence_id == evidence_id)
+        .order_by(desc(ClassificationResult.created_at))
+        .first()
+    )
+    prediction = classification.prediction if classification else None
+    canonical_labels = {"age", "ethnicity", "gender", "not_cyberbullying", "other_cyberbullying", "religion"}
+    prediction_status = (
+        "canonical" if prediction in canonical_labels
+        else "legacy_unmapped" if prediction and prediction.startswith("LABEL_")
+        else "unmapped" if prediction
+        else None
+    )
     reviews = db.query(ExaminerReview).filter(ExaminerReview.evidence_id == evidence_id).all()
     audit_logs = db.query(AuditLog).filter(AuditLog.evidence_id == evidence_id).order_by(AuditLog.created_at.asc()).all()
 
@@ -33,7 +47,12 @@ def build_evidence_report(db: Session, evidence_id: int, format: str = "json") -
         "triage": {
             "model_name": classification.model_name if classification else None,
             "model_version": classification.model_version if classification else None,
-            "prediction": classification.prediction if classification else None,
+            "prediction": prediction,
+            "prediction_status": prediction_status,
+            "prediction_warning": (
+                "Legacy unmapped record; not a current six-class prediction and excluded from current model metrics."
+                if prediction_status == "legacy_unmapped" else None
+            ),
             "confidence_score": classification.confidence_score if classification else None,
             "risk_level": classification.risk_level if classification else None,
             "threshold": classification.threshold if classification else None,

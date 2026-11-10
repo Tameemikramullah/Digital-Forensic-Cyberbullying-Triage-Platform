@@ -14,6 +14,33 @@ MODEL_DIRS = [
     os.path.join(PROJECT_ROOT, "saved_models"),  # legacy location
 ]
 LABEL_ENCODER_PATH = os.path.join(PROJECT_ROOT, "ml", "saved_models", "label_encoder.pkl")
+TARGET_RECALL = 95.0
+THRESHOLD_SELECTION_RULE = (
+    f"Target recall is {TARGET_RECALL:.0f}%. If one or more tested thresholds meet the target, "
+    "select the highest such threshold to minimize flagged workload. If none meet it, select "
+    "the lowest tested threshold among those with the highest observed recall."
+)
+
+
+def _wilson_interval(successes: int, total: int, z: float = 1.96):
+    if total <= 0:
+        return None
+    rate = successes / total
+    denominator = 1 + z * z / total
+    center = (rate + z * z / (2 * total)) / denominator
+    margin = z * np.sqrt((rate * (1 - rate) + z * z / (4 * total)) / total) / denominator
+    return [round(max(0.0, center - margin) * 100, 2), round(min(1.0, center + margin) * 100, 2)]
+
+
+def _select_threshold(results: List[Dict], target_recall: float = TARGET_RECALL):
+    if not results:
+        return None
+    eligible = [row for row in results if row["recall"] >= target_recall]
+    if eligible:
+        return max(eligible, key=lambda row: row["threshold"])
+    highest_recall = max(row["recall"] for row in results)
+    highest_recall_rows = [row for row in results if row["recall"] == highest_recall]
+    return min(highest_recall_rows, key=lambda row: row["threshold"])
 
 
 def _load_model(model_name: str):
@@ -118,6 +145,9 @@ def run_threshold_calibration(model_name: str = "svm", thresholds: List[float] =
         return {
             "model_name": model_name,
             "thresholds": [],
+            "target_recall": TARGET_RECALL,
+            "target_recall_met": None,
+            "threshold_selection_rule": THRESHOLD_SELECTION_RULE,
             "message": "No reviewed evidence with ground truth available.",
         }
 
@@ -158,6 +188,9 @@ def run_threshold_calibration(model_name: str = "svm", thresholds: List[float] =
             "threshold": threshold,
             "recall": round(float(recall) * 100, 2),
             "precision": round(float(precision) * 100, 2),
+            "recall_ci_95": _wilson_interval(tp, tp + fn),
+            "precision_ci_95": _wilson_interval(tp, tp + fp),
+            "meets_target_recall": round(float(recall) * 100, 2) >= TARGET_RECALL,
             "workload_reduction": round(float(workload_reduction), 2),
             "missed_evidence_rate": round(float(missed_evidence_rate), 2),
             "brier_score": round(brier_score, 4),
@@ -170,7 +203,17 @@ def run_threshold_calibration(model_name: str = "svm", thresholds: List[float] =
             "total_reviewed": total,
         })
 
-    best = max(results, key=lambda r: (r["precision"] + r["recall"]) / 2) if results else None
+    best = _select_threshold(results)
+    target_recall_met = bool(best and best["recall"] >= TARGET_RECALL)
+    if target_recall_met:
+        selection_reason = "Selected the highest tested threshold meeting the target recall."
+    elif best:
+        selection_reason = (
+            "No tested threshold met the target; selected the lowest threshold among those "
+            "with the highest observed recall to prioritize sensitivity."
+        )
+    else:
+        selection_reason = "No threshold could be selected."
 
     return {
         "model_name": model_name,
@@ -178,7 +221,13 @@ def run_threshold_calibration(model_name: str = "svm", thresholds: List[float] =
         "actual_harmful": actual_harmful,
         "brier_score": round(brier_score, 4),
         "ece": round(ece, 4),
+        "target_recall": TARGET_RECALL,
+        "target_recall_met": target_recall_met,
+        "selected_threshold_reason": selection_reason,
         "selected_threshold": best["threshold"] if best else 0.7,
+        "threshold_selection_rule": THRESHOLD_SELECTION_RULE,
+        "selected_threshold_precision": best["precision"] if best else None,
+        "selected_threshold_recall": best["recall"] if best else None,
         "results": results,
         "reliability_data": reliability_data,
     }

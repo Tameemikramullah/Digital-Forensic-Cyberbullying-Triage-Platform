@@ -39,3 +39,23 @@ def test_hash_linked_audit_and_custody_chains_verify(db_session, evidence, exami
 
     assert verify_audit_chain(db_session, evidence.id)["valid"] is True
     assert tracker.verify_chain(evidence.id)["valid"] is True
+
+
+def test_audit_chain_verification_fails_after_persisted_log_entry_is_tampered(db_session, evidence, examiner):
+    create_audit_log(db_session, evidence.id, "EVIDENCE_UPLOADED", examiner.email, {"source": "test"})
+    create_audit_log(db_session, evidence.id, "EVIDENCE_TRIAGED", examiner.email, {"model": "svm"})
+    assert verify_audit_chain(db_session, evidence.id)["valid"] is True
+
+    first_entry = (
+        db_session.query(AuditLog)
+        .filter(AuditLog.evidence_id == evidence.id)
+        .order_by(AuditLog.created_at.asc(), AuditLog.id.asc())
+        .first()
+    )
+    first_entry.event_details = json.dumps({"source": "tampered"})
+    db_session.commit()
+
+    result = verify_audit_chain(db_session, evidence.id)
+    assert result["valid"] is False
+    assert result["logs_checked"] == 2
+    assert any("entry_hash mismatch" in error for error in result["errors"])

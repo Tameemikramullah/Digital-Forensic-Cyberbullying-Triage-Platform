@@ -117,7 +117,13 @@ export default function EvidenceDetails() {
   if (!evidence) return <div className="p-6">Evidence not found</div>
 
   const riskLevel = triage?.risk_level || ensembleResult?.risk_level
-  const riskColor = riskLevel === 'HIGH' ? 'text-red-600 bg-red-50 border-red-200' : riskLevel === 'MEDIUM' ? 'text-yellow-600 bg-yellow-50 border-yellow-200' : 'text-green-600 bg-green-50 border-green-200'
+  const riskColor = riskLevel === 'HIGH'
+    ? 'text-red-600 bg-red-50 border-red-200'
+    : riskLevel === 'MEDIUM'
+      ? 'text-yellow-600 bg-yellow-50 border-yellow-200'
+      : riskLevel === 'LOW'
+        ? 'text-green-600 bg-green-50 border-green-200'
+        : 'text-gray-600 bg-gray-50 border-gray-200'
 
   return (
     <div className="p-6">
@@ -187,8 +193,10 @@ export default function EvidenceDetails() {
             <div><p className="text-sm text-gray-600">Model</p><p className="font-bold">{triage.model_name || 'SVM'}</p></div>
             <div><p className="text-sm text-gray-600">Version</p><p className="font-bold">{triage.model_version}</p></div>
             <div><p className="text-sm text-gray-600">Threshold</p><p className="font-bold">{triage.threshold}</p></div>
+            <div><p className="text-sm text-gray-600">Cyberbullying Risk Score</p><p className="font-bold">{(triage.risk_score * 100).toFixed(1)}%</p></div>
             <div><p className="text-sm text-gray-600">Processing Time</p><p className="font-bold">{triage.processing_time_ms}ms</p></div>
             <div><p className="text-sm text-gray-600">Explanation Method</p><p className="font-bold">{triage.explanation_method}</p></div>
+            {triage.explanation_reason && <div className="col-span-2 text-sm text-gray-600">{triage.explanation_reason}</div>}
             <div><p className="text-sm text-gray-600">Risk Level</p><p className={`font-bold ${riskColor}`}>{triage.risk_level}</p></div>
             <div className="col-span-2"><p className="text-sm text-gray-600">Preprocessing</p><p className="text-sm">{triage.preprocessing_steps}</p></div>
           </div>
@@ -200,9 +208,10 @@ export default function EvidenceDetails() {
           <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><FlaskConical size={20} /> Full Triage Result (Ensemble)</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
             <div><p className="text-sm text-gray-600">Prediction</p><p className="font-bold">{ensembleResult.prediction}</p></div>
-            <div><p className="text-sm text-gray-600">Confidence</p><p className="font-bold">{(ensembleResult.confidence * 100).toFixed(1)}%</p></div>
+            <div><p className="text-sm text-gray-600">Winning Label Vote Share</p><p className="font-bold">{ensembleResult.risk_level === 'UNKNOWN' ? 'N/A (no valid votes)' : `${(ensembleResult.confidence * 100).toFixed(1)}%`}</p></div>
+            <div><p className="text-sm text-gray-600">Cyberbullying Vote Share</p><p className="font-bold">{ensembleResult.risk_level === 'UNKNOWN' ? 'N/A (no valid votes)' : `${(ensembleResult.risk_score * 100).toFixed(1)}%`}</p></div>
             <div><p className="text-sm text-gray-600">Risk Level</p><p className={`font-bold ${ensembleResult.risk_level === 'HIGH' ? 'text-red-600' : ensembleResult.risk_level === 'MEDIUM' ? 'text-yellow-600' : 'text-green-600'}`}>{ensembleResult.risk_level}</p></div>
-            <div><p className="text-sm text-gray-600">Threshold</p><p className="font-bold">{ensembleResult.threshold}</p></div>
+            <div><p className="text-sm text-gray-600">Majority Risk Threshold</p><p className="font-bold">{(ensembleResult.threshold * 100).toFixed(0)}%</p></div>
             <div><p className="text-sm text-gray-600">Processing Time</p><p className="font-bold">{ensembleResult.processing_time_ms}ms</p></div>
             <div><p className="text-sm text-gray-600">Explanation Method</p><p className="font-bold">{ensembleResult.explanation_method}</p></div>
             <div className="col-span-2"><p className="text-sm text-gray-600">Preprocessing</p><p className="text-sm">{ensembleResult.preprocessing_steps}</p></div>
@@ -219,9 +228,13 @@ export default function EvidenceDetails() {
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
             {ensembleResult.votes?.map((vote: any) => (
               <div key={vote.model_name} className="border rounded p-3">
-                <p className="text-xs text-gray-500 uppercase">{vote.model_name}</p>
+                <p className="text-xs text-gray-500 uppercase">{vote.model_name === 'bert' ? 'DistilBERT' : vote.model_name}</p>
                 <p className="font-bold">{vote.prediction}</p>
-                <p className="text-sm">{(vote.confidence * 100).toFixed(1)}%</p>
+                <p className="text-xs text-gray-600">Top-class model score: {(vote.confidence * 100).toFixed(1)}%</p>
+                <p className="text-xs mt-2">Explanation: {vote.explanation_available ? vote.explanation_method : 'unavailable'}</p>
+                {!vote.explanation_available && vote.explanation_reason && (
+                  <p className="text-xs text-gray-500">{vote.explanation_reason}</p>
+                )}
               </div>
             ))}
           </div>
@@ -229,7 +242,7 @@ export default function EvidenceDetails() {
           {ensembleResult.model_agreement && (
             <div className="bg-gray-50 border rounded p-3 mb-4">
               <p className="text-sm"><strong>Agreement:</strong> {ensembleResult.model_agreement.agreement}</p>
-              <p className="text-sm"><strong>Confidence Spread:</strong> {(ensembleResult.model_agreement.confidence_spread * 100).toFixed(1)}%</p>
+              <p className="text-sm"><strong>Winning Vote Share:</strong> {ensembleResult.model_agreement.winning_vote_share == null ? 'N/A' : `${(ensembleResult.model_agreement.winning_vote_share * 100).toFixed(1)}%`}</p>
               <p className="text-sm"><strong>Disagreement Levels:</strong> {ensembleResult.model_agreement.disagreement_levels}</p>
               {ensembleResult.model_agreement.forced_review && (
                 <p className="text-sm text-red-700 font-bold">Forced review due to model disagreement</p>

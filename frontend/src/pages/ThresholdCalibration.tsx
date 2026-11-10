@@ -20,6 +20,8 @@ export default function ThresholdCalibration() {
   }))
 
   const selectedThreshold = data.selected_threshold ?? 0.7
+  const reviewedCount = Number(data.total_reviewed || 0)
+  const actualHarmful = Number(data.actual_harmful || 0)
   const reliabilityData = (data.reliability_data || []).map((item: any) => ({
     ...item,
     perfect: item.bin_mid,
@@ -31,6 +33,18 @@ export default function ThresholdCalibration() {
       <p className="text-gray-600 mb-6">
         Model: <span className="font-bold">{data.model_name}</span> | Reviewed Evidence: <span className="font-bold">{data.total_reviewed}</span> | Actual Harmful: <span className="font-bold">{data.actual_harmful}</span>
       </p>
+
+      {data.threshold_selection_rule && (
+        <p className="text-sm text-gray-700 mb-4">Selection rule: {data.threshold_selection_rule}</p>
+      )}
+
+      {reviewedCount < 10 && (
+        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded p-4 mb-6">
+          Only {reviewedCount} confirmed/rejected review records are available. These rates are highly uncertain.
+          {actualHarmful > 0 && ` Recall is based on ${actualHarmful} confirmed case(s); a displayed 100% recall would mean ${actualHarmful}/${actualHarmful} detected.`}
+          {actualHarmful === 0 && ' There are no confirmed positive cases, so recall cannot be estimated.'}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white p-4 rounded shadow">
@@ -80,8 +94,9 @@ export default function ThresholdCalibration() {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-4 py-2 text-left">Threshold</th>
-              <th className="px-4 py-2 text-left">Recall (%)</th>
-              <th className="px-4 py-2 text-left">Precision (%)</th>
+              <th className="px-4 py-2 text-left">Recall (95% CI)</th>
+              <th className="px-4 py-2 text-left">Precision (95% CI)</th>
+              <th className="px-4 py-2 text-left">Meets {data.target_recall ?? 95}% Recall Target</th>
               <th className="px-4 py-2 text-left">Workload Reduction (%)</th>
               <th className="px-4 py-2 text-left">Missed Evidence Rate (%)</th>
               <th className="px-4 py-2 text-left">Flagged / Total</th>
@@ -92,8 +107,9 @@ export default function ThresholdCalibration() {
             {data.results.map((row: any) => (
               <tr key={row.threshold} className={`border-t ${row.threshold === selectedThreshold ? 'bg-blue-50' : ''}`}>
                 <td className="px-4 py-2 font-mono font-bold">{row.threshold.toFixed(2)}</td>
-                <td className="px-4 py-2">{row.recall.toFixed(1)}%</td>
-                <td className="px-4 py-2">{row.precision.toFixed(1)}%</td>
+                <td className="px-4 py-2">{row.recall.toFixed(1)}%<span className="block text-xs text-gray-500">{row.recall_ci_95 ? `${row.recall_ci_95[0]}–${row.recall_ci_95[1]}%` : 'not estimable'}</span></td>
+                <td className="px-4 py-2">{row.precision.toFixed(1)}%<span className="block text-xs text-gray-500">{row.precision_ci_95 ? `${row.precision_ci_95[0]}–${row.precision_ci_95[1]}%` : 'not estimable'}</span></td>
+                <td className="px-4 py-2">{row.meets_target_recall ? 'Yes' : 'No'}</td>
                 <td className="px-4 py-2">{row.workload_reduction.toFixed(1)}%</td>
                 <td className="px-4 py-2">{row.missed_evidence_rate.toFixed(1)}%</td>
                 <td className="px-4 py-2">{row.flagged_count} / {row.total_reviewed}</td>
@@ -126,10 +142,10 @@ export default function ThresholdCalibration() {
       <div className="bg-white p-6 rounded shadow">
         <h2 className="text-xl font-bold mb-4">Selected Threshold Justification</h2>
         <p className="text-sm text-gray-600 mb-2">
-          The current triage threshold is <span className="font-bold">{selectedThreshold.toFixed(2)}</span>. This value was selected to balance recall, precision, workload reduction, and missed-evidence rate based on the calibration study above.
+          The current triage threshold is <span className="font-bold">{selectedThreshold.toFixed(2)}</span>. {data.selected_threshold_reason} Target recall: {data.target_recall ?? 95}%; achieved recall: {data.selected_threshold_recall?.toFixed(1) ?? 'N/A'}%.
         </p>
         <p className="text-sm text-gray-600">
-          At threshold {selectedThreshold.toFixed(2)}, the system achieves high precision while maintaining acceptable recall, ensuring that flagged evidence is highly likely to be harmful and reducing the overall review burden on human examiners.
+          Workload reduction and missed-evidence rate are reported as operating tradeoffs. Interpret all estimates in light of the reviewed sample size above.
         </p>
         <p className="text-sm text-gray-600 mt-2">
           Brier Score: <span className="font-bold">{data.brier_score?.toFixed(4) ?? 'N/A'}</span> (lower is better) | ECE: <span className="font-bold">{data.ece?.toFixed(4) ?? 'N/A'}</span>
